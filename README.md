@@ -1,29 +1,49 @@
-# Rude Organic Maps APK builder
+# Rude-Sat-Nav
 
-This is a phone-friendly GitHub Actions builder for Organic Maps 2026.08.27-18.
-It checks out the exact upstream commit, applies `rude-navigation.patch`, and builds an installable Google ARM64 debug APK.
+A custom Android build of Organic Maps with optional rude/random voice commentary.
 
-## Build from an Android phone
+## Features
 
-1. Create a new **public GitHub repository** from the GitHub mobile app or github.com.
-2. Upload these files/folders from this package:
-   - `rude-navigation.patch`
-   - `.github/workflows/build-apk.yml`
-   - `README.md` (optional)
-3. Open the repository on GitHub.
-4. Open **Actions** → **Build Rude Organic Maps APK** → **Run workflow**.
-5. Wait for the green checkmark.
-6. Open the completed workflow run and scroll to **Artifacts**.
-7. Download `rude-organic-maps-google-debug` to your phone and unzip it.
-8. Install the APK.
+- Random rude commentary for navigation instructions
+- Different phrases for left and right turns
+- Recalculation commentary
+- Wrong-route commentary
+- Destination-arrival commentary
+- U-turn commentary
+- Roundabout commentary
+- Keep-left and keep-right commentary
+- Optional conversion of spoken feet to yards
+- Driver-name support
+- Optional speeding commentary
+- Optional harsh-braking commentary
+- Optional fast-corner commentary
+- Uses the Android system Text-to-Speech engine
+- ARM64 Google Debug APK build
+- Preserves the Android Auto support provided by the selected Organic Maps revision
 
 ## Important
 
-The APK is a debug-signed build. Because the package name is the same as the official Organic Maps app, Android will normally require you to uninstall the official Organic Maps first before installing this build. Back up/export anything important first.
+Rude commentary is optional. Normal Organic Maps navigation remains available when the feature is disabled.
 
-The current patch adds:
-- Rude navigation voice toggle.
-- Random sweary English commentary for left/right, recalculation, wrong route, destination, roundabout, keep-left/right and U-turn instructions.
-- Optional conversion of spoken English imperial distances from feet to rounded yards.
+The custom voice text is passed through Android's normal Text-to-Speech system. This project does not bundle or redistribute Google's proprietary Google Maps navigation voice.
 
-It does **not yet change the routing engine's notification schedule to exactly 500/300/200/100/50 yards**, and it does not have a native distinct missed-turn event. Those require deeper changes to the routing notification generator.
+## Build
+
+The GitHub Actions workflow builds the selected Organic Maps revision and applies the custom patch.
+
+The workflow is:
+
+`.github/workflows/build-apk.yml`
+
+Run it from:
+
+**GitHub → Actions → Build Rude Organic Maps APK → Run workflow**
+
+The resulting APK is uploaded as a GitHub Actions artifact.
+
+## Architecture
+
+The current workflow builds:
+
+```text
+arm64-v8a
