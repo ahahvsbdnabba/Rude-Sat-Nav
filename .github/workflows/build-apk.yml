@@ -40,20 +40,40 @@ jobs:
 
       - name: Apply rude navigation patch
         run: |
-          git apply --check "$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
-          git apply "$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
+          set -e
+
+          PATCH="$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
+
+          echo "===== CHECK PATCH ====="
+          git apply --check "$PATCH"
+
+          echo "===== APPLY PATCH ====="
+          git apply "$PATCH"
+
+          echo "===== VERIFY RudeTts.java ====="
+          test -f android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
+
+          echo "===== VERIFY TtsPlayer.java ====="
+          grep -n "RudeTts.transform" \
+            android/sdk/src/main/java/app/organicmaps/sdk/sound/TtsPlayer.java
+
+          echo "===== VERIFY PATCHED FILES ====="
+          git status --short
 
       - name: Build ARM64 APK
         working-directory: android
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --stacktrace --info -Parchitectures=arm64-v8a assembleGoogleDebug 2>&1 | tee "$GITHUB_WORKSPACE/gradle-build.log"
+          ./gradlew --no-daemon --stacktrace --info \
+            -Parchitectures=arm64-v8a \
+            assembleGoogleDebug 2>&1 | tee "$GITHUB_WORKSPACE/gradle-build.log"
 
       - name: Show APK outputs
         if: always()
         run: |
           echo "===== APK FILES ====="
           find android/app/build -type f -name "*.apk" -print 2>/dev/null || true
+
           echo "===== ALL OUTPUT FILES ====="
           find android/app/build/outputs -type f -print 2>/dev/null || true
 
