@@ -27,11 +27,11 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y ninja-build ccache
 
-      - name: Checkout submodules
+      - name: Checkout Organic Maps submodules
         run: |
           git submodule update --depth 1 --init --recursive --jobs=$(( $(nproc) * 4 ))
 
-      - name: Checkout Rude-Sat-Nav patch
+      - name: Checkout Rude-Sat-Nav files
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
@@ -39,42 +39,57 @@ jobs:
           path: rude-sat-nav
           sparse-checkout: |
             rude-navigation.patch
+            android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
           sparse-checkout-cone-mode: false
 
-      - name: Apply rude navigation patch
+      - name: Apply Rude Navigation changes
         run: |
           set -e
 
           PATCH="$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
+          RUDE_TTS="$GITHUB_WORKSPACE/rude-sat-nav/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java"
 
-          echo "===== PATCH FILE ====="
-          ls -lh "$PATCH"
+          echo "===== CHECKING PATCH ====="
+          git apply --check \
+            --exclude='android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java' \
+            "$PATCH"
 
-          echo "===== CHECK PATCH ====="
-          git apply --check "$PATCH"
+          echo "===== APPLYING PATCH ====="
+          git apply \
+            --exclude='android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java' \
+            "$PATCH"
 
-          echo "===== APPLY PATCH ====="
-          git apply "$PATCH"
+          echo "===== INSTALLING RudeTts.java ====="
+          test -f "$RUDE_TTS"
 
-          echo "===== VERIFY RudeTts.java ====="
+          mkdir -p android/sdk/src/main/java/app/organicmaps/sdk/sound
+
+          cp "$RUDE_TTS" \
+            android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
+
+          echo "===== VERIFYING RudeTts.java ====="
           test -f android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
 
-          echo "===== VERIFY TtsPlayer.java ====="
+          echo "===== VERIFYING TtsPlayer.java ====="
           grep -n "RudeTts.transform" \
             android/sdk/src/main/java/app/organicmaps/sdk/sound/TtsPlayer.java
 
-          echo "===== VERIFY Config.java ====="
+          echo "===== VERIFYING CONFIG ====="
           grep -n "isRudeEnabled" \
             android/sdk/src/main/java/app/organicmaps/sdk/util/Config.java
 
-          echo "===== VERIFY SETTINGS ====="
+          echo "===== VERIFYING SETTINGS ====="
           grep -n "mTtsRude" \
             android/app/src/main/java/app/organicmaps/settings/VoiceInstructionsSettingsFragment.java
 
-          echo "===== PATCHED FILES ====="
+          echo "===== RudeTts.java HEADER ====="
+          head -n 10 \
+            android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
+
+          echo "===== MODIFIED FILES ====="
           git status --short
 
-      - name: Build ARM64 APK
+      - name: Build ARM64 Google Debug APK
         working-directory: android
         run: |
           set -o pipefail
