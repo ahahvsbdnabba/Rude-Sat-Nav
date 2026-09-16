@@ -14,7 +14,7 @@ jobs:
       JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
 
     steps:
-      - name: Checkout Organic Maps 2026.08.27-18
+      - name: Checkout Organic Maps
         uses: actions/checkout@v4
         with:
           repository: organicmaps/organicmaps
@@ -31,7 +31,7 @@ jobs:
         run: |
           git submodule update --depth 1 --init --recursive --jobs=$(( $(nproc) * 4 ))
 
-      - name: Checkout Rude-Sat-Nav files
+      - name: Checkout Rude-Sat-Nav patch
         uses: actions/checkout@v4
         with:
           path: rude-sat-nav
@@ -43,15 +43,27 @@ jobs:
           git apply --check "$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
           git apply "$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
 
-      - name: Build Google ARM64 debug APK
+      - name: Build ARM64 APK
         working-directory: android
         run: |
-          ./gradlew --no-daemon --stacktrace --parallel -Parchitectures=arm64-v8a assembleGoogleDebug
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --info -Parchitectures=arm64-v8a assembleGoogleDebug 2>&1 | tee "$GITHUB_WORKSPACE/gradle-build.log"
 
-      - name: Upload APK
+      - name: Show APK outputs
+        if: always()
+        run: |
+          echo "===== APK FILES ====="
+          find android/app/build -type f -name "*.apk" -print 2>/dev/null || true
+          echo "===== ALL OUTPUT FILES ====="
+          find android/app/build/outputs -type f -print 2>/dev/null || true
+
+      - name: Upload APK and build logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rude-organic-maps-google-debug
-          path: android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          name: rude-organic-maps-build
+          path: |
+            android/app/build/outputs/**
+            gradle-build.log
+          if-no-files-found: warn
           retention-days: 30
