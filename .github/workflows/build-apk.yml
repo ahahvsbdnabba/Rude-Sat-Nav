@@ -9,8 +9,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     env:
       JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
+
     steps:
       - name: Checkout Organic Maps 2026.08.27-18
         uses: actions/checkout@v4
@@ -26,14 +28,25 @@ jobs:
           sudo apt-get install -y ninja-build ccache
 
       - name: Checkout submodules
-        run: git submodule update --depth 1 --init --recursive --jobs=$(($(nproc) * 4))
+        run: |
+          git submodule update --depth 1 --init --recursive --jobs=$(( $(nproc) * 4 ))
+
+      - name: Checkout Rude-Sat-Nav files
+        uses: actions/checkout@v4
+        with:
+          path: rude-sat-nav
+          sparse-checkout: |
+            rude-navigation.patch
 
       - name: Apply rude navigation patch
-        run: git apply --check "$GITHUB_WORKSPACE/rude-navigation.patch" && git apply "$GITHUB_WORKSPACE/rude-navigation.patch"
+        run: |
+          git apply --check "$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
+          git apply "$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
 
       - name: Build Google ARM64 debug APK
         working-directory: android
-        run: ./gradlew -Parm64 assembleGoogleDebug
+        run: |
+          ./gradlew --no-daemon --stacktrace --parallel -Parchitectures=arm64-v8a assembleGoogleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
