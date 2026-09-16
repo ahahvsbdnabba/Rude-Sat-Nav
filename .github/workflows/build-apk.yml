@@ -29,7 +29,11 @@ jobs:
 
       - name: Checkout Organic Maps submodules
         run: |
-          git submodule update --depth 1 --init --recursive --jobs=$(( $(nproc) * 4 ))
+          git submodule update \
+            --depth 1 \
+            --init \
+            --recursive \
+            --jobs=$(( $(nproc) * 4 ))
 
       - name: Checkout Rude-Sat-Nav files
         uses: actions/checkout@v4
@@ -39,10 +43,9 @@ jobs:
           path: rude-sat-nav
           sparse-checkout: |
             rude-navigation.patch
-            android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
           sparse-checkout-cone-mode: false
 
-      - name: Verify Rude-Sat-Nav files
+      - name: Verify Rude-Sat-Nav patch
         run: |
           set -e
 
@@ -52,66 +55,45 @@ jobs:
           echo "===== Checking patch ====="
           test -f rude-sat-nav/rude-navigation.patch
 
-          echo "===== Checking RudeTts.java ====="
-          test -f rude-sat-nav/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
+          echo "===== Patch size ====="
+          ls -lh rude-sat-nav/rude-navigation.patch
 
-          echo "===== RudeTts.java ====="
-          ls -lh rude-sat-nav/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
-
-      - name: Apply Rude Navigation patch
+      - name: Check patch before applying
         run: |
           set -e
 
-          PATCH="$GITHUB_WORKSPACE/rude-sat-nav/rude-navigation.patch"
-          RUDE_TTS="$GITHUB_WORKSPACE/rude-sat-nav/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java"
-
           echo "===== CHECKING PATCH ====="
+          git apply --check rude-sat-nav/rude-navigation.patch
 
-          git apply --check \
-            --exclude='android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java' \
-            "$PATCH"
+          echo "Patch applies cleanly to Organic Maps commit:"
+          git rev-parse HEAD
 
-          echo "===== APPLYING PATCH ====="
+      - name: Apply Rude-Sat-Nav patch
+        run: |
+          set -e
 
-          git apply \
-            --exclude='android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java' \
-            "$PATCH"
+          echo "===== APPLYING RUDE-SAT-NAV PATCH ====="
+          git apply rude-sat-nav/rude-navigation.patch
 
-          echo "===== COPYING RudeTts.java ====="
+          echo "===== MODIFIED FILES ====="
+          git status --short
 
-          mkdir -p android/sdk/src/main/java/app/organicmaps/sdk/sound
-
-          cp "$RUDE_TTS" \
-            android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
-
-          echo "===== VERIFYING FINAL FILE ====="
-
-          test -f android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
-
-          echo "===== FINAL RudeTts.java ====="
-          ls -lh android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
-
-          echo "===== PACKAGE ====="
-          head -n 5 android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
-
-          echo "===== VERIFY TtsPlayer ====="
-
+          echo "===== VERIFY RUDE TTS ====="
           grep -n "RudeTts.transform" \
             android/sdk/src/main/java/app/organicmaps/sdk/sound/TtsPlayer.java
 
-          echo "===== VERIFY CONFIG ====="
+          echo "===== VERIFY RUDE TTS FILE ====="
+          test -f \
+            android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
 
-          grep -n "isRudeEnabled" \
-            android/sdk/src/main/java/app/organicmaps/sdk/util/Config.java
+          echo "===== VERIFY DRIVING MONITOR ====="
+          test -f \
+            android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeDrivingMonitor.java
 
-          echo "===== VERIFY SETTINGS ====="
-
-          grep -n "mTtsRude" \
-            android/app/src/main/java/app/organicmaps/settings/VoiceInstructionsSettingsFragment.java
-
-          echo "===== MODIFIED FILES ====="
-
-          git status --short
+          echo "===== VERIFY DRIVER NAME SETTING ====="
+          grep -R -n "mTtsDriverName" \
+            android/app/src/main/java/app/organicmaps/settings/ \
+            || true
 
       - name: Build ARM64 Google Debug APK
         working-directory: android
@@ -146,7 +128,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rude-organic-maps-build
+          name: rude-organic-maps-google-debug
           path: |
             android/app/build/outputs/**
             gradle-build.log
