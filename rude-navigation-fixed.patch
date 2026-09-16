@@ -1,0 +1,571 @@
+diff --git a/android/app/src/main/java/app/organicmaps/MwmActivity.java b/android/app/src/main/java/app/organicmaps/MwmActivity.java
+index 49d2f92..300f1d8 100644
+--- a/android/app/src/main/java/app/organicmaps/MwmActivity.java
++++ b/android/app/src/main/java/app/organicmaps/MwmActivity.java
+@@ -98,8 +98,10 @@ import app.organicmaps.sdk.location.SensorListener;
+ import app.organicmaps.sdk.location.TrackRecorder;
+ import app.organicmaps.sdk.maplayer.isolines.IsolinesState;
+ import app.organicmaps.sdk.routing.RoutingController;
++import app.organicmaps.sdk.routing.RoutingInfo;
+ import app.organicmaps.sdk.routing.RoutingOptions;
+ import app.organicmaps.sdk.search.SearchEngine;
++import app.organicmaps.sdk.sound.RudeDrivingMonitor;
+ import app.organicmaps.sdk.settings.RoadType;
+ import app.organicmaps.sdk.settings.UnitLocale;
+ import app.organicmaps.sdk.util.Config;
+@@ -158,6 +160,8 @@ public class MwmActivity extends BaseMwmFragmentActivity
+   private Toolbar mPointChooserToolbar;
+ 
+   private NavigationController mNavigationController;
++  @NonNull
++  private final RudeDrivingMonitor mRudeDrivingMonitor = new RudeDrivingMonitor();
+   @Nullable
+   private OnmapDownloader mOnmapDownloader;
+ 
+@@ -999,6 +1003,7 @@ public class MwmActivity extends BaseMwmFragmentActivity
+     Framework.nativeRemovePlacePageActivationListener(this);
+     BookmarkManager.INSTANCE.removeLoadingListener(this);
+     MwmApplication.from(this).getLocationHelper().removeListener(this);
++    mRudeDrivingMonitor.reset();
+     if (mDisplayManager.isDeviceDisplayUsed() && !RoutingController.get().isNavigating())
+       LocationState.nativeRemoveListener();
+     // Attached unconditionally in onStart()
+@@ -1552,7 +1557,9 @@ public class MwmActivity extends BaseMwmFragmentActivity
+     if (!routing.isNavigating())
+       return;
+ 
+-    mNavigationController.update(Framework.nativeGetRouteFollowingInfo());
++    final RoutingInfo routingInfo = Framework.nativeGetRouteFollowingInfo();
++    mNavigationController.update(routingInfo);
++    mRudeDrivingMonitor.onLocationUpdated(location, routingInfo);
+   }
+ 
+   @Override
+diff --git a/android/app/src/main/java/app/organicmaps/settings/VoiceInstructionsSettingsFragment.java b/android/app/src/main/java/app/organicmaps/settings/VoiceInstructionsSettingsFragment.java
+index 2c9e7cc..96223a2 100644
+--- a/android/app/src/main/java/app/organicmaps/settings/VoiceInstructionsSettingsFragment.java
++++ b/android/app/src/main/java/app/organicmaps/settings/VoiceInstructionsSettingsFragment.java
+@@ -18,6 +18,7 @@ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
+ import androidx.annotation.StringRes;
+ import androidx.core.content.ContextCompat;
++import androidx.preference.EditTextPreference;
+ import androidx.preference.ListPreference;
+ import androidx.preference.Preference;
+ import androidx.preference.SeekBarPreference;
+@@ -52,6 +53,15 @@ public class VoiceInstructionsSettingsFragment extends BaseXmlSettingsFragment
+   private TwoStatePreference mTtsPrefStreetNames;
+   @NonNull
+   @SuppressWarnings("NotNullFieldNotInitialized")
++  private TwoStatePreference mTtsRude;
++  @NonNull
++  @SuppressWarnings("NotNullFieldNotInitialized")
++  private TwoStatePreference mTtsYards;
++  @NonNull
++  @SuppressWarnings("NotNullFieldNotInitialized")
++  private EditTextPreference mTtsDriverName;
++  @NonNull
++  @SuppressWarnings("NotNullFieldNotInitialized")
+   private ListPreference mPrefLanguages;
+   @NonNull
+   @SuppressWarnings("NotNullFieldNotInitialized")
+@@ -84,6 +94,9 @@ public class VoiceInstructionsSettingsFragment extends BaseXmlSettingsFragment
+       TtsPlayer.setEnabled(false);
+       mTtsPrefLanguages.setVisible(false);
+       mTtsPrefStreetNames.setVisible(false);
++      mTtsRude.setVisible(false);
++      mTtsYards.setVisible(false);
++      mTtsDriverName.setVisible(false);
+       mTtsVolume.setVisible(false);
+       updateGoogleTtsInfoSummary(R.string.prefs_languages_information_off);
+       mTtsVoiceTest.setVisible(false);
+@@ -93,6 +106,9 @@ public class VoiceInstructionsSettingsFragment extends BaseXmlSettingsFragment
+     updateGoogleTtsInfoSummary(R.string.prefs_languages_information);
+     mTtsPrefLanguages.setVisible(true);
+     mTtsPrefStreetNames.setVisible(true);
++    mTtsRude.setVisible(true);
++    mTtsYards.setVisible(true);
++    mTtsDriverName.setVisible(true);
+     mTtsVolume.setVisible(true);
+     mTtsVoiceTest.setVisible(true);
+ 
+@@ -132,6 +148,24 @@ public class VoiceInstructionsSettingsFragment extends BaseXmlSettingsFragment
+     return true;
+   };
+ 
++  private final Preference.OnPreferenceChangeListener mRudeListener = (preference, newValue) ->
++  {
++    Config.TTS.setRudeEnabled((Boolean) newValue);
++    return true;
++  };
++
++  private final Preference.OnPreferenceChangeListener mYardsListener = (preference, newValue) ->
++  {
++    Config.TTS.setUseYards((Boolean) newValue);
++    return true;
++  };
++
++  private final Preference.OnPreferenceChangeListener mDriverNameListener = (preference, newValue) ->
++  {
++    Config.TTS.setDriverName((String) newValue);
++    return true;
++  };
++
+   @Override
+   protected int getXmlResources()
+   {
+@@ -146,6 +180,9 @@ public class VoiceInstructionsSettingsFragment extends BaseXmlSettingsFragment
+     mTtsPrefEnabled = getPreference(getString(R.string.pref_tts_enabled));
+     mTtsPrefLanguages = getPreference(getString(R.string.pref_tts_language));
+     mTtsPrefStreetNames = getPreference(getString(R.string.pref_tts_street_names));
++    mTtsRude = getPreference(getString(R.string.pref_tts_rude));
++    mTtsYards = getPreference(getString(R.string.pref_tts_yards));
++    mTtsDriverName = getPreference(getString(R.string.pref_tts_driver_name));
+     mTtsLangInfo = getPreference(getString(R.string.pref_tts_info));
+ 
+     Preference mTtsOpenSystemSettings = getPreference(getString(R.string.pref_tts_open_system_settings));
+@@ -219,6 +256,9 @@ public class VoiceInstructionsSettingsFragment extends BaseXmlSettingsFragment
+     mTtsPrefEnabled.setOnPreferenceChangeListener(enable ? mEnabledListener : null);
+     mTtsPrefLanguages.setOnPreferenceChangeListener(enable ? mLangListener : null);
+     mTtsPrefStreetNames.setOnPreferenceChangeListener(enable ? mStreetNameListener : null);
++    mTtsRude.setOnPreferenceChangeListener(enable ? mRudeListener : null);
++    mTtsYards.setOnPreferenceChangeListener(enable ? mYardsListener : null);
++    mTtsDriverName.setOnPreferenceChangeListener(enable ? mDriverNameListener : null);
+   }
+ 
+   private void setLanguage(@NonNull LanguageData lang)
+@@ -242,6 +282,9 @@ public class VoiceInstructionsSettingsFragment extends BaseXmlSettingsFragment
+     if (languages.isEmpty())
+     {
+       mTtsPrefEnabled.setChecked(false);
++      mTtsRude.setVisible(false);
++      mTtsYards.setVisible(false);
++      mTtsDriverName.setVisible(false);
+       mTtsPrefEnabled.setEnabled(false);
+       mTtsPrefEnabled.setSummary(R.string.pref_tts_unavailable);
+       mTtsPrefStreetNames.setVisible(false);
+@@ -283,6 +326,12 @@ public class VoiceInstructionsSettingsFragment extends BaseXmlSettingsFragment
+     mTtsPrefLanguages.setSummary(available ? mCurrentLanguage.name : null);
+     mTtsPrefLanguages.setValue(available ? mCurrentLanguage.internalCode : null);
+     mTtsPrefStreetNames.setVisible(enabled && available && TtsPlayer.isEnabled());
++    mTtsRude.setVisible(enabled && available && TtsPlayer.isEnabled());
++    mTtsYards.setVisible(enabled && available && TtsPlayer.isEnabled());
++    mTtsDriverName.setVisible(enabled && available && TtsPlayer.isEnabled());
++    mTtsRude.setChecked(Config.TTS.isRudeEnabled());
++    mTtsYards.setChecked(Config.TTS.useYards());
++    mTtsDriverName.setText(Config.TTS.getDriverName());
+     mTtsVolume.setVisible(enabled && available && TtsPlayer.isEnabled());
+     mTtsVoiceTest.setVisible(enabled && available && TtsPlayer.isEnabled());
+ 
+diff --git a/android/app/src/main/res/values/strings.xml b/android/app/src/main/res/values/strings.xml
+index be4aab7..52793fa 100644
+--- a/android/app/src/main/res/values/strings.xml
++++ b/android/app/src/main/res/values/strings.xml
+@@ -229,6 +229,15 @@
+     <string name="pref_bg_tiles_disclaimer">Custom tile sources are provided by you. Use only services you are allowed to access. You are responsible for attribution, license terms, API keys, quotas, and usage limits.</string>
+     <!-- Settings «Route» category: «Tts enabled» title -->
+     <string name="pref_tts_enable_title">Voice Instructions</string>
++    <string name="pref_tts_rude">tts_rude</string>
++    <string name="pref_tts_rude_title">Rude navigation voice</string>
++    <string name="pref_tts_rude_summary">Add random sweary commentary to English voice directions.</string>
++    <string name="pref_tts_driver_name">tts_driver_name</string>
++    <string name="pref_tts_driver_name_title">Driver name</string>
++    <string name="pref_tts_driver_name_summary">Name used by speeding, braking and cornering comments.</string>
++    <string name="pref_tts_yards">tts_yards</string>
++    <string name="pref_tts_yards_title">Use yards for spoken distances</string>
++    <string name="pref_tts_yards_summary">Convert spoken feet to yards in English imperial voice directions.</string>
+     <!-- Settings «Route» category: «Tts announce street names» title -->
+     <string name="pref_tts_street_names_title">Announce Street Names</string>
+     <!-- Settings «Route» category: «Tts announce street names» description -->
+diff --git a/android/app/src/main/res/xml/prefs_voice_instructions.xml b/android/app/src/main/res/xml/prefs_voice_instructions.xml
+index 62e3260..879dca5 100644
+--- a/android/app/src/main/res/xml/prefs_voice_instructions.xml
++++ b/android/app/src/main/res/xml/prefs_voice_instructions.xml
+@@ -6,6 +6,21 @@
+   <SwitchPreferenceCompat
+       android:key="@string/pref_tts_enabled"
+       android:title="@string/pref_tts_enable_title" />
++  <SwitchPreferenceCompat
++      android:key="@string/pref_tts_rude"
++      android:title="@string/pref_tts_rude_title"
++      android:summary="@string/pref_tts_rude_summary"
++      android:defaultValue="false" />
++  <EditTextPreference
++      android:key="@string/pref_tts_driver_name"
++      android:title="@string/pref_tts_driver_name_title"
++      android:summary="@string/pref_tts_driver_name_summary"
++      android:defaultValue="driver" />
++  <SwitchPreferenceCompat
++      android:key="@string/pref_tts_yards"
++      android:title="@string/pref_tts_yards_title"
++      android:summary="@string/pref_tts_yards_summary"
++      android:defaultValue="true" />
+   <SwitchPreferenceCompat
+       android:key="@string/pref_tts_street_names"
+       android:title="@string/pref_tts_street_names_title"
+diff --git a/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeDrivingMonitor.java b/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeDrivingMonitor.java
+new file mode 100644
+index 0000000..7c77ae6
+--- /dev/null
++++ b/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeDrivingMonitor.java
+@@ -0,0 +1,106 @@
++package app.organicmaps.sdk.sound;
++
++import android.location.Location;
++import androidx.annotation.NonNull;
++import androidx.annotation.Nullable;
++import app.organicmaps.sdk.routing.RoutingInfo;
++import app.organicmaps.sdk.util.Config;
++
++public final class RudeDrivingMonitor
++{
++  private static final long SPEEDING_COOLDOWN_MS = 30_000L;
++  private static final long BRAKING_COOLDOWN_MS = 20_000L;
++  private static final long CORNER_COOLDOWN_MS = 30_000L;
++  private static final long SPEEDING_DELAY_MS = 5_000L;
++
++  private static final float HARSH_BRAKING_MPS2 = -4.0f;
++  private static final float FAST_CORNER_MPS = 13.9f;
++  private static final float FAST_CORNER_BEARING_DEG = 35.0f;
++
++  @Nullable
++  private Location mPreviousLocation;
++  private long mSpeedingSince = 0L;
++  private long mLastSpeedingComment = 0L;
++  private long mLastBrakingComment = 0L;
++  private long mLastCornerComment = 0L;
++
++  public void onLocationUpdated(@NonNull Location location, @Nullable RoutingInfo routingInfo)
++  {
++    if (!Config.TTS.isRudeEnabled() || !Config.TTS.isEnabled())
++    {
++      mPreviousLocation = new Location(location);
++      return;
++    }
++
++    final long now = location.getTime();
++    final float speed = location.hasSpeed() ? location.getSpeed() : -1.0f;
++    final float speedLimit =
++        routingInfo == null ? -1.0f : (float) routingInfo.speedLimitMps;
++
++    if (speed >= 0.0f && speedLimit > 0.0f
++        && speed > speedLimit + Math.max(1.0f, speedLimit * 0.10f))
++    {
++      if (mSpeedingSince == 0L)
++        mSpeedingSince = now;
++
++      if (now - mSpeedingSince >= SPEEDING_DELAY_MS
++          && now - mLastSpeedingComment >= SPEEDING_COOLDOWN_MS)
++      {
++        speak(RudeTts.speedingComment());
++        mLastSpeedingComment = now;
++      }
++    }
++    else
++    {
++      mSpeedingSince = 0L;
++    }
++
++    if (mPreviousLocation != null)
++    {
++      final long dtMs = Math.max(1L, now - mPreviousLocation.getTime());
++      final float acceleration =
++          (speed >= 0.0f && mPreviousLocation.hasSpeed())
++              ? (speed - mPreviousLocation.getSpeed()) / (dtMs / 1000.0f)
++              : 0.0f;
++
++      if (acceleration <= HARSH_BRAKING_MPS2
++          && now - mLastBrakingComment >= BRAKING_COOLDOWN_MS)
++      {
++        speak(RudeTts.harshBrakingComment());
++        mLastBrakingComment = now;
++      }
++
++      if (speed >= FAST_CORNER_MPS
++          && mPreviousLocation.hasBearing()
++          && location.hasBearing())
++      {
++        float delta = Math.abs(location.getBearing() - mPreviousLocation.getBearing());
++        if (delta > 180.0f)
++          delta = 360.0f - delta;
++
++        if (delta >= FAST_CORNER_BEARING_DEG
++            && now - mLastCornerComment >= CORNER_COOLDOWN_MS)
++        {
++          speak(RudeTts.fastCornerComment());
++          mLastCornerComment = now;
++        }
++      }
++    }
++
++    mPreviousLocation = new Location(location);
++  }
++
++  public void reset()
++  {
++    mPreviousLocation = null;
++    mSpeedingSince = 0L;
++    mLastSpeedingComment = 0L;
++    mLastBrakingComment = 0L;
++    mLastCornerComment = 0L;
++  }
++
++  private static void speak(@NonNull String text)
++  {
++    TtsPlayer.INSTANCE.playTurnNotifications(new String[] {text});
++  }
++}
+diff --git a/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java b/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
+new file mode 100644
+index 0000000..5f474d0
+--- /dev/null
++++ b/android/sdk/src/main/java/app/organicmaps/sdk/sound/RudeTts.java
+@@ -0,0 +1,173 @@
++package app.organicmaps.sdk.sound;
++
++import androidx.annotation.NonNull;
++import app.organicmaps.sdk.util.Config;
++import java.util.Locale;
++import java.util.concurrent.ThreadLocalRandom;
++import java.util.regex.Matcher;
++import java.util.regex.Pattern;
++
++public final class RudeTts
++{
++  private static final Pattern FEET =
++      Pattern.compile("\\b(\\d+)\\s+feet\\b", Pattern.CASE_INSENSITIVE);
++  private static int sLastIndex = -1;
++
++  private static final String[] LEFT = {
++      "Turn left, you fucking muppet.",
++      "Left turn. Try not to miss the bastard.",
++      "Turn left, for fuck's sake.",
++      "Take the left, you absolute bellend."
++  };
++  private static final String[] RIGHT = {
++      "Turn right, you fucking muppet.",
++      "Right turn. Pay attention this time.",
++      "Turn right, for fuck's sake.",
++      "Take the right, you absolute bellend."
++  };
++  private static final String[] RECALC = {
++      "Right, you've fucked it. Recalculating.",
++      "For fuck's sake. Recalculating.",
++      "You've ignored me, so I'm fixing your mess.",
++      "Brilliant. Now I have to find another way."
++  };
++  private static final String[] WRONG = {
++      "You're on the wrong fucking route.",
++      "Wrong route, you absolute muppet.",
++      "Nope. That's completely fucking wrong.",
++      "Congratulations, you've gone the wrong way."
++  };
++  private static final String[] DEST = {
++      "You're nearly there. Miraculously.",
++      "Destination approaching. Don't fuck it up now.",
++      "Almost there, you magnificent fucking disaster.",
++      "You actually made it."
++  };
++  private static final String[] KEEP_LEFT = {
++      "Keep left, you muppet.",
++      "Keep left. It's not fucking difficult."
++  };
++  private static final String[] KEEP_RIGHT = {
++      "Keep right, you muppet.",
++      "Keep right. Pay fucking attention."
++  };
++  private static final String[] UTURN = {
++      "Make a U-turn, you absolute bellend.",
++      "Turn around. Yes, you've fucked it."
++  };
++  private static final String[] ROUNDABOUT = {
++      "Roundabout ahead. Try counting this time.",
++      "Approaching a roundabout. Don't fuck it up."
++  };
++  private static final String[] SPEEDING = {
++      "Slow the fuck down, %s.",
++      "You're speeding, %s. Ease off the fucking accelerator.",
++      "Oi %s, the speed limit isn't a suggestion."
++  };
++  private static final String[] BRAKING = {
++      "Easy on the brakes, %s. That was fucking harsh.",
++      "Bloody hell, %s. That's some serious braking.",
++      "Try braking like a normal person, %s."
++  };
++  private static final String[] CORNER = {
++      "That's a bit fucking quick for this bend, %s.",
++      "Slow down for the bend, %s.",
++      "Easy into that corner, %s."
++  };
++
++  private RudeTts() {}
++
++  @NonNull
++  public static String transform(@NonNull String text)
++  {
++    if (!Config.TTS.isRudeEnabled() || !isEnglish())
++      return text;
++
++    String out = convertFeetToYards(text);
++    String lower = out.toLowerCase(Locale.US);
++    String extra = null;
++
++    if (lower.contains("recalculat"))
++      extra = pick(RECALC);
++    else if (lower.contains("wrong route") || lower.contains("route has changed"))
++      extra = pick(WRONG);
++    else if (lower.contains("destination") || lower.contains("you have arrived")
++             || lower.contains("arrived"))
++      extra = pick(DEST);
++    else if (lower.contains("u-turn") || lower.contains("u turn"))
++      extra = pick(UTURN);
++    else if (lower.contains("roundabout"))
++      extra = pick(ROUNDABOUT);
++    else if (lower.contains("keep left"))
++      extra = pick(KEEP_LEFT);
++    else if (lower.contains("keep right"))
++      extra = pick(KEEP_RIGHT);
++    else if (lower.contains("turn left") || lower.contains("left"))
++      extra = pick(LEFT);
++    else if (lower.contains("turn right") || lower.contains("right"))
++      extra = pick(RIGHT);
++
++    return extra == null ? out : out + " " + extra;
++  }
++
++  public static String speedingComment()
++  {
++    return String.format(Locale.US, pick(SPEEDING), driverName());
++  }
++
++  public static String harshBrakingComment()
++  {
++    return String.format(Locale.US, pick(BRAKING), driverName());
++  }
++
++  public static String fastCornerComment()
++  {
++    return String.format(Locale.US, pick(CORNER), driverName());
++  }
++
++  private static String driverName()
++  {
++    String name = Config.TTS.getDriverName().trim();
++    return name.isEmpty() ? "driver" : name;
++  }
++
++  private static boolean isEnglish()
++  {
++    String lang = Config.TTS.getLanguage();
++    return lang == null || lang.isEmpty()
++           || lang.toLowerCase(Locale.US).startsWith("en");
++  }
++
++  @NonNull
++  private static String convertFeetToYards(@NonNull String text)
++  {
++    if (!Config.TTS.useYards())
++      return text;
++
++    Matcher m = FEET.matcher(text);
++    StringBuffer b = new StringBuffer();
++    while (m.find())
++    {
++      int feet = Integer.parseInt(m.group(1));
++      int yards = Math.max(1, Math.round(feet / 3.0f));
++      m.appendReplacement(b, yards + " yards");
++    }
++    m.appendTail(b);
++    return b.toString();
++  }
++
++  private static String pick(String[] values)
++  {
++    if (values.length == 1)
++      return values[0];
++
++    int index;
++    do
++    {
++      index = ThreadLocalRandom.current().nextInt(values.length);
++    } while (index == sLastIndex);
++
++    sLastIndex = index;
++    return values[index];
++  }
++}
+diff --git a/android/sdk/src/main/java/app/organicmaps/sdk/sound/TtsPlayer.java b/android/sdk/src/main/java/app/organicmaps/sdk/sound/TtsPlayer.java
+index da9b334..2bcd8cb 100644
+--- a/android/sdk/src/main/java/app/organicmaps/sdk/sound/TtsPlayer.java
++++ b/android/sdk/src/main/java/app/organicmaps/sdk/sound/TtsPlayer.java
+@@ -324,7 +324,7 @@ public enum TtsPlayer
+ 
+     for (int i = 0; i < turnNotifications.length; i++)
+     {
+-      final String text = turnNotifications[i];
++      final String text = RudeTts.transform(turnNotifications[i]);
+       final boolean result = i == 0 ? speakFirstString(text) : addToQueue(text);
+       if (!result)
+       {
+diff --git a/android/sdk/src/main/java/app/organicmaps/sdk/util/Config.java b/android/sdk/src/main/java/app/organicmaps/sdk/util/Config.java
+index 068c38f..4f7c2de 100644
+--- a/android/sdk/src/main/java/app/organicmaps/sdk/util/Config.java
++++ b/android/sdk/src/main/java/app/organicmaps/sdk/util/Config.java
+@@ -484,6 +484,9 @@ public final class Config
+       String LANGUAGE = "TtsLanguage";
+       String VOLUME = "TtsVolume";
+       String STREETS = "TtsStreetNames";
++      String RUDE = "TtsRude";
++      String YARDS = "TtsYards";
++      String DRIVER_NAME = "TtsDriverName";
+     }
+ 
+     public interface Defaults
+@@ -495,6 +498,9 @@ public final class Config
+       float VOLUME = VOLUME_MAX;
+ 
+       boolean STREETS = false; // TTS may mangle some languages, do not announce streets by default
++      boolean RUDE = false;
++      boolean YARDS = true;
++      String DRIVER_NAME = "driver";
+     }
+ 
+     public static boolean isEnabled()
+@@ -537,6 +543,37 @@ public final class Config
+     {
+       setBool(Keys.STREETS, enabled);
+     }
++
++    public static boolean isRudeEnabled()
++    {
++      return getBool(Keys.RUDE, Defaults.RUDE);
++    }
++
++    public static void setRudeEnabled(boolean enabled)
++    {
++      setBool(Keys.RUDE, enabled);
++    }
++
++    public static boolean useYards()
++    {
++      return getBool(Keys.YARDS, Defaults.YARDS);
++    }
++
++    public static void setUseYards(boolean enabled)
++    {
++      setBool(Keys.YARDS, enabled);
++    }
++
++    @NonNull
++    public static String getDriverName()
++    {
++      return getString(Keys.DRIVER_NAME, Defaults.DRIVER_NAME);
++    }
++
++    public static void setDriverName(@NonNull String name)
++    {
++      setString(Keys.DRIVER_NAME, name.trim());
++    }
+   }
+ 
+   private static native boolean nativeHasConfigValue(String name);
